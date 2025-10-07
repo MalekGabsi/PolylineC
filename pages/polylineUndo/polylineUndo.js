@@ -1,7 +1,10 @@
-import Stack from './stack';
 import Konva from "konva";
 import { createMachine, interpret } from "xstate";
-
+import { ChangeColorCommand } from './ChangeColorCommand';
+import { ConcreteCommand } from './ConcreteCommand';
+import Stack from "./stack"
+import { log } from "xstate/lib/actions";
+import UndoManager from "./undoManager";
 const stage = new Konva.Stage({
     container: "container",
     width: 400,
@@ -14,6 +17,11 @@ const dessin = new Konva.Layer();
 const temporaire = new Konva.Layer();
 stage.add(dessin);
 stage.add(temporaire);
+
+/* const undoStack = new Stack();
+const redoStack = new Stack(); */
+const undoManager = new UndoManager()
+
 
 const MAX_POINTS = 10;
 let polyline // La polyline en cours de construction;
@@ -111,7 +119,7 @@ const polylineMachine = createMachine(
                 temporaire.batchDraw();
             },
             saveLine: (context, event) => {
-                polyline.remove(); // On l'enlève de la couche temporaire
+                //polyline.remove(); // On l'enlève de la couche temporaire
                 const currentPoints = polyline.points(); // Get the current points of the line
                 const size = currentPoints.length;
                 // Le dernier point(provisoire) ne fait pas partie de la polyline
@@ -119,7 +127,14 @@ const polylineMachine = createMachine(
                 polyline.points(newPoints);
                 polyline.stroke("black"); // On change la couleur
                 // On sauvegarde la polyline dans la couche de dessin
-                dessin.add(polyline); // On l'ajoute à la couche de dessin
+                const c = new ConcreteCommand(polyline,dessin)
+                undoManager.executeCommand(c);
+                //c.execute()
+                /* undoStack.push(c)  
+                
+                redoStack.items = []; */
+
+                updateButtons();
             },
             addPoint: (context, event) => {
                 const pos = stage.getPointerPosition();
@@ -172,8 +187,42 @@ window.addEventListener("keydown", (event) => {
     polylineService.send(event.key);
 });
 
-// bouton Undo
+// Boutons
 const undoButton = document.getElementById("undo");
+const redoButton = document.getElementById("redo");
+const colorButton = document.getElementById("color");
+
+// bouton Undo
 undoButton.addEventListener("click", () => {
-    
+    undoManager.undo();
+    updateButtons()
+
 });
+redoButton.addEventListener("click", () => {
+    undoManager.redo();
+    updateButtons()
+});
+
+colorButton.addEventListener("click", () => {
+    const randomColor = getRandomColor();
+    if (polyline) {
+        const cmd = new ChangeColorCommand(polyline,randomColor );
+        undoManager.executeCommand(cmd);
+    }
+});
+
+function getRandomColor() {
+  const letters = "0123456789ABCDEF";
+  let color = "#";
+  for (let i = 0; i < 6; i++) {
+    color += letters[Math.floor(Math.random() * 16)];
+  }
+  return color;
+}
+
+function updateButtons(){
+    undoButton.disabled = !undoManager.canUndo(); 
+    redoButton.disabled = !undoManager.canRedo(); 
+}
+
+updateButtons();
